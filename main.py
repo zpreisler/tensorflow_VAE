@@ -15,6 +15,8 @@ class encoder():
         with tf.variable_scope(name):
             self.flat=tf.layers.flatten(inputs=self.inputs,name='flat')
 
+            #x=tf.layers.conv2d(inputs=self.inputs,filters=4,kernel_size=2,strides=1,padding='same',activation=tf.nn.elu,name='elu1')
+
             x=tf.layers.dense(inputs=self.flat,units=512,activation=tf.nn.elu,name='elu1')
             x=tf.layers.dense(inputs=x,units=384,activation=tf.nn.elu,name='elu2')
             x=tf.layers.dense(inputs=x,units=256,activation=tf.nn.elu,name='elu3')
@@ -41,6 +43,10 @@ class decoder():
 
             self.flat=tf.layers.dense(inputs=x,units=128*128,activation=tf.nn.sigmoid,name='flat')
             self.out=tf.reshape(self.flat,shape)
+
+            #self.input_z=tf.layers.dense(inputs=self.z,units=128*128,activation=tf.nn.elu,name='elu0')
+            #self.z2=tf.reshape(self.input_z,shape)
+            #x=tf.layers.conv2d_transpose(inputs=self.z2,filters=4,kernel_size=2,strides=1,padding='same',activation=tf.nn.elu,name='elu1')
 
             print(self.flat)
             print(self.out)
