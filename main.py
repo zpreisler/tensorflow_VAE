@@ -3,19 +3,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import tensorflow as tf
+from tensorflow_utils import coord2d
 class encoder():
     def __init__(self,inputs,z_dim,name='encoder'):
         self.inputs=inputs
+        self.coord2d=coord2d(self.inputs,name='coord')
         self.z_dim=z_dim
 
-        self.build_graph(self.z_dim,name=name)
+        self.build_conv_graph(self.z_dim,name=name)
         self.shape=tf.shape(inputs)
 
     def build_graph(self,z_dim,name='encoder'):
         with tf.variable_scope(name):
             self.flat=tf.layers.flatten(inputs=self.inputs,name='flat')
-
-            #x=tf.layers.conv2d(inputs=self.inputs,filters=4,kernel_size=2,strides=1,padding='same',activation=tf.nn.elu,name='elu1')
 
             x=tf.layers.dense(inputs=self.flat,units=512,activation=tf.nn.elu,name='elu1')
             x=tf.layers.dense(inputs=x,units=384,activation=tf.nn.elu,name='elu2')
@@ -29,10 +29,34 @@ class encoder():
 
             print(self.z)
 
+    def build_conv_graph(self,z_dim,name='encoder'):
+        with tf.variable_scope(name):
+
+            x=tf.layers.conv2d(inputs=self.coord2d,kernel_size=1,filters=8,strides=1,padding='same',activation=tf.nn.elu,name='elu1')
+            print(x)
+            x=tf.layers.conv2d(inputs=x,kernel_size=2,filters=16,strides=2,padding='same',activation=tf.nn.elu,name='elu2')
+            print(x)
+            x=tf.layers.conv2d(inputs=x,kernel_size=4,filters=32,strides=2,padding='same',activation=tf.nn.elu,name='elu3')
+            print(x)
+            x=tf.layers.conv2d(inputs=x,kernel_size=4,filters=64,strides=2,padding='same',activation=tf.nn.elu,name='elu4')
+            print(x)
+
+            x=tf.layers.flatten(inputs=x,name='flat')
+
+            self.mean=tf.layers.dense(x,units=z_dim,name='mean')
+            self.log_sigma2=tf.layers.dense(x,units=z_dim,name='log_sigma2')
+
+            eps=tf.random_normal(shape=tf.shape(self.mean),mean=0,stddev=1)
+            self.z=self.mean+tf.sqrt(tf.exp(self.log_sigma2))*eps
+
+            print(self.z)
+
+
+
 class decoder():
     def __init__(self,z,shape,name='decoder'):
         self.z=z
-        self.build_graph(shape,name=name)
+        self.build_conv_graph(shape,name=name)
 
     def build_graph(self,shape,name='encoder'):
         with tf.variable_scope(name):
@@ -41,14 +65,23 @@ class decoder():
             x=tf.layers.dense(inputs=x,units=384,activation=tf.nn.elu,name='elu2')
             x=tf.layers.dense(inputs=x,units=512,activation=tf.nn.elu,name='elu3')
 
-            self.flat=tf.layers.dense(inputs=x,units=128*128,activation=tf.nn.sigmoid,name='flat')
+            self.flat=tf.layers.dense(inputs=x,units=64*64,activation=tf.nn.sigmoid,name='flat')
             self.out=tf.reshape(self.flat,shape)
+            print(self.out)
 
-            #self.input_z=tf.layers.dense(inputs=self.z,units=128*128,activation=tf.nn.elu,name='elu0')
-            #self.z2=tf.reshape(self.input_z,shape)
-            #x=tf.layers.conv2d_transpose(inputs=self.z2,filters=4,kernel_size=2,strides=1,padding='same',activation=tf.nn.elu,name='elu1')
+    def build_conv_graph(self,shape,name='encoder'):
+        with tf.variable_scope(name):
 
-            print(self.flat)
+            x=tf.layers.dense(inputs=self.z,units=8*8*64,activation=tf.nn.elu,name='elu0')
+            x=tf.reshape(x,(-1,8,8,64))
+            print(x)
+            x=tf.layers.conv2d_transpose(inputs=x,filters=32,kernel_size=4,strides=2,padding='same',activation=tf.nn.elu,name='elu1')
+            print(x)
+            x=tf.layers.conv2d_transpose(inputs=x,filters=16,kernel_size=4,strides=2,padding='same',activation=tf.nn.elu,name='elu2')
+            print(x)
+            x=tf.layers.conv2d_transpose(inputs=x,filters=8,kernel_size=2,strides=2,padding='same',activation=tf.nn.elu,name='elu3')
+            print(x)
+            self.out=tf.layers.conv2d_transpose(inputs=x,filters=1,kernel_size=1,strides=1,padding='same',activation=tf.nn.sigmoid,name='out')
             print(self.out)
 
 class VAE():
@@ -72,7 +105,8 @@ class VAE():
 
     def _h_loss(self):
         eps=1e-6
-        cross_entropy=self.enc.flat*tf.log(eps+self.dec.flat)+(1.0-self.enc.flat)*tf.log(eps+1.0-self.dec.flat)
+        #cross_entropy=self.enc.flat*tf.log(eps+self.dec.flat)+(1.0-self.enc.flat)*tf.log(eps+1.0-self.dec.flat)
+        cross_entropy=self.enc.inputs*tf.log(eps+self.dec.out)+(1.0-self.enc.inputs)*tf.log(eps+1.0-self.dec.out)
         return -tf.reduce_sum(cross_entropy)
 
     def _optimizer(self):
@@ -106,11 +140,11 @@ def read_data(handle,batch_size=64):
 def plot_img(img,count,shape=(8,8),path='log/'):
     from matplotlib.pyplot import imshow,show,figure,subplots,xlabel,ylabel,subplots_adjust,savefig,close
     from numpy import block,array,prod
-    fig,ax=subplots(figsize=(10,10))
+    fig,ax=subplots(figsize=(8,8))
 
-    img=img.reshape(-1,128,128)
+    img=img.reshape(-1,64,64)
     ig=img[:prod(shape)]
-    t=ig.reshape(*shape,128,128)
+    t=ig.reshape(*shape,64,64)
     b=block(list(map(list,t)))
     imshow(b)
 
@@ -166,7 +200,7 @@ def main(argv):
     _square=glob("images/train/square/rotated/*.png")
     _fluid=glob("images/train/fluid/original/*.png")
     random.shuffle(_fluid)
-    _fluid=_fluid[:300]
+    #_fluid=_fluid[:300]
     #train_files=_hex+_honeycomb+_square+_fluid
     train_files=_honeycomb+_hex+_square
 
